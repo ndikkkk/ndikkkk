@@ -12,6 +12,11 @@ Hello World!<br>I'm Andhika Alvin Adhzikra 🙌
 ![](https://nirzak-streak-stats.vercel.app/?user=ndikkkk&theme=onedark&hide_border=true)<br/>
 ![](https://github-readme-stats.vercel.app/api/top-langs/?username=ndikkkk&theme=onedark&hide_border=true&include_all_commits=true&count_private=true&layout=compact)
 
+## 🐧 My Action Runner's System Info (via Neofetch)
+<!-- START_SECTION:neofetch -->
+<!-- Konten di sini akan digantikan oleh GitHub Action -->
+<!-- END_SECTION:neofetch -->
+
 ## 🏆 GitHub Trophies
 ![](https://github-profile-trophy.vercel.app/?username=ndikkkk&theme=onedark&no-frame=false&no-bg=true&margin-w=4)
 
