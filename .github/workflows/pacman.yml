@@ -1,0 +1,103 @@
+name: Update README with Neofetch
+
+on:
+  workflow_dispatch: # Memungkinkan menjalankan workflow secara manual
+  schedule:
+    - cron: '0 0 * * *' # Jalankan setiap hari pada pukul 00:00 UTC
+  push:
+    branches:
+      - main # Atau branch default Anda
+
+jobs:
+  update_readme:
+    name: Update README with Neofetch Output
+    runs-on: ubuntu-latest # Runner host, kita akan pakai kontainer Arch di dalamnya
+
+    container:
+      image: archlinux:latest # Image Docker Arch Linux
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update pacman and install neofetch
+        run: |
+          echo "Updating pacman and installing neofetch..."
+          sudo pacman -Syu --noconfirm
+          sudo pacman -S --noconfirm neofetch curl # Curl mungkin dibutuhkan untuk beberapa skrip
+
+      - name: Run neofetch and capture output
+        id: neofetch_step # Beri ID pada step ini untuk mengambil outputnya
+        run: |
+          echo "Running neofetch..."
+          # --stdout untuk output mentah, --color_blocks off agar tidak ada escape codes aneh
+          # Ganti --config none jika Anda tidak mau config default, atau arahkan ke config kustom
+          NEOFETCH_OUTPUT=$(neofetch --stdout --color_blocks off)
+          
+          # Cara untuk membuat output multiline tersedia untuk step selanjutnya
+          # Menggunakan pembatas EOF agar aman untuk karakter spesial
+          echo "neofetch_content<<EOF" >> $GITHUB_OUTPUT
+          echo "$NEOFETCH_OUTPUT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Update README.md with neofetch output
+        run: |
+          # Script kecil untuk mengganti konten antara marker
+          # Menggunakan Python untuk kemudahan manipulasi string multiline
+          # Pastikan Python terinstal di image Arch atau instal jika perlu
+          # (Image archlinux:latest biasanya sudah ada Python)
+
+          # Pertama, pastikan python3 ada, jika tidak, instal
+          if ! command -v python &> /dev/null
+          then
+              echo "Python not found, installing..."
+              sudo pacman -S --noconfirm python
+          fi
+          
+          cat << 'EOS' > update_script.py
+          import os
+          import re
+
+          readme_file = "README.md"
+          neofetch_data = os.environ.get("NEOFETCH_CONTENT", "Error: Neofetch data not found")
+
+          # Format output neofetch agar rapi di Markdown (dalam blok kode)
+          formatted_neofetch = f"```text\n{neofetch_data.strip()}\n```"
+
+          start_marker = "<!-- START_SECTION:neofetch -->"
+          end_marker = "<!-- END_SECTION:neofetch -->"
+
+          with open(readme_file, "r", encoding="utf-8") as f:
+              content = f.read()
+
+          # Regex untuk mencari dan mengganti konten di antara marker
+          # re.DOTALL membuat '.' cocok juga dengan newline
+          new_content = re.sub(
+              f"({re.escape(start_marker)}).*?({re.escape(end_marker)})",
+              f"\\1\n{formatted_neofetch}\n\\2",
+              content,
+              flags=re.DOTALL,
+              count=1 # Hanya ganti kemunculan pertama
+          )
+
+          if new_content == content:
+              print(f"Markers '{start_marker}' and '{end_marker}' not found or content unchanged.")
+              # Anda bisa memilih untuk exit(1) di sini jika marker tidak ditemukan
+          else:
+              with open(readme_file, "w", encoding="utf-8") as f:
+                  f.write(new_content)
+              print("README.md updated successfully with neofetch output.")
+          EOS
+
+          # Jalankan script Python, berikan output neofetch melalui environment variable
+          NEOFETCH_CONTENT="${{ steps.neofetch_step.outputs.neofetch_content }}" python update_script.py
+        env:
+          # Memastikan variabel tersedia untuk script Python
+          NEOFETCH_CONTENT: ${{ steps.neofetch_step.outputs.neofetch_content }}
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: auto-update README with neofetch output [skip ci]"
+          file_pattern: README.md # Hanya commit README.md jika berubah
+          # [skip ci] ditambahkan ke pesan commit untuk mencegah loop build jika Action juga terpicu oleh push
