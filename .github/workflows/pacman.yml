@@ -1,20 +1,20 @@
 name: Update README with Neofetch
 
 on:
-  workflow_dispatch: # Memungkinkan menjalankan workflow secara manual
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *' # Jalankan setiap 6 jam (bisa disesuaikan)
+    - cron: '0 */6 * * *'
   push:
     branches:
-      - main # Atau branch default repositori profilmu
+      - main
 
 jobs:
   update_readme:
     name: Update README with Neofetch Output
-    runs-on: ubuntu-latest # Runner host
+    runs-on: ubuntu-latest
 
     container:
-      image: archlinux:latest # Image Docker Arch Linux
+      image: archlinux:latest
 
     steps:
       - name: Checkout repository
@@ -23,43 +23,29 @@ jobs:
       - name: Update pacman and install dependencies
         run: |
           echo "Updating pacman and installing dependencies..."
-          # Hapus 'sudo' karena kita kemungkinan sudah root di kontainer archlinux:latest
-          pacman -Syu --noconfirm
-          # Instal neofetch, curl (mungkin berguna), dan python (untuk script update)
-          pacman -S --noconfirm neofetch curl python 
-        # Jika ada error 'command not found' untuk python di langkah selanjutnya,
-        # berarti python belum terinstal. Maka, langkah di atas sudah benar.
+          # Gunakan -Syyu untuk memaksa refresh semua database paket
+          pacman -Syyu --noconfirm
+          # Sekarang coba instal paketnya
+          pacman -S --noconfirm neofetch curl python
 
       - name: Run neofetch and capture output
         id: neofetch_step
         run: |
           echo "Running neofetch..."
-          # --stdout untuk output mentah
-          # --color_blocks off atau --config /dev/null atau --ascii_bold off
-          # untuk mencoba meminimalkan karakter escape warna
           NEOFETCH_OUTPUT=$(neofetch --stdout --color_blocks off)
-          
-          # Menyimpan output multiline untuk step berikutnya
           echo "neofetch_content<<EOF" >> $GITHUB_OUTPUT
           echo "$NEOFETCH_OUTPUT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Update README.md with neofetch output
         run: |
-          # Script Python untuk mengganti konten antara marker
-          # Python seharusnya sudah terinstal dari langkah sebelumnya
-          
           cat << 'EOS' > update_script.py
           import os
           import re
 
           readme_file = "README.md"
           neofetch_data = os.environ.get("NEOFETCH_CONTENT", "Error: Neofetch data not found")
-
-          # Format output neofetch agar rapi di Markdown (dalam blok kode teks)
-          # .strip() untuk menghilangkan spasi/newline ekstra di awal/akhir
           formatted_neofetch = f"```text\n{neofetch_data.strip()}\n```"
-
           start_marker = "<!-- START_SECTION:neofetch -->"
           end_marker = "<!-- END_SECTION:neofetch -->"
 
@@ -70,21 +56,16 @@ jobs:
               print(f"Error: {readme_file} not found.")
               exit(1)
 
-          # Regex untuk mencari dan mengganti konten di antara marker
-          # re.DOTALL membuat '.' cocok juga dengan newline
-          # Pastikan marker ada di README.md
           if start_marker not in content or end_marker not in content:
               print(f"Error: Markers '{start_marker}' and '{end_marker}' not found in {readme_file}.")
-              print("Please add them to your README.md file.")
-              # exit(1) # Kamu bisa pilih untuk menghentikan action jika marker tidak ada
-              # Atau biarkan saja, tapi README tidak akan terupdate
-          
+              # exit(1) # Opsional: hentikan jika marker tidak ada
+
           new_content, num_replacements = re.subn(
               f"({re.escape(start_marker)}\\s*\\n).*?(\\n\\s*{re.escape(end_marker)})",
-              f"\\1{formatted_neofetch}\\2", # Menjaga newline asli di sekitar marker
+              f"\\1{formatted_neofetch}\\2",
               content,
               flags=re.DOTALL,
-              count=1 # Hanya ganti kemunculan pertama
+              count=1
           )
 
           if num_replacements > 0:
@@ -92,30 +73,15 @@ jobs:
                   f.write(new_content)
               print("README.md updated successfully with neofetch output.")
           elif start_marker in content and end_marker in content:
-              # Jika marker ada tapi tidak ada yang diganti (misalnya konten sudah sama)
-              # Atau regex tidak cocok karena format newline di sekitar marker
               print("Content between markers not replaced. Check regex or if content is already up-to-date.")
-              # Untuk debugging, coba ganti regex di atas menjadi:
-              # f"({re.escape(start_marker)}).*?({re.escape(end_marker)})",
-              # f"\\1\n{formatted_neofetch}\n\\2",
-              # Jika itu berhasil, berarti masalahnya ada di penanganan newline di regex awal
-          else:
-              # Marker tidak ditemukan, sudah ditangani di atas
-              pass
-              
           EOS
 
-          # Jalankan script Python, berikan output neofetch melalui environment variable
           NEOFETCH_CONTENT="${{ steps.neofetch_step.outputs.neofetch_content }}" python update_script.py
         env:
-          # Memastikan variabel tersedia untuk script Python
           NEOFETCH_CONTENT: ${{ steps.neofetch_step.outputs.neofetch_content }}
 
       - name: Commit and push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "docs: auto-update README with neofetch output [skip ci]"
-          file_pattern: README.md # Hanya commit README.md jika berubah
-          # [skip ci] ditambahkan ke pesan commit untuk mencegah loop build jika Action juga terpicu oleh push
-          # commit_options: '--no-verify' # Tambahkan jika ada pre-commit hook yang gagal
-          # push_options: '--force' # Hati-hati dengan force push, biasanya tidak disarankan
+          file_pattern: README.md
